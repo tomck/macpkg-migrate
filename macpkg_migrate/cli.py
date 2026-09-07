@@ -25,7 +25,7 @@ def main():
     if args.command is None: print(GUIDE); return
     if args.command=='inventory': print(json.dumps(all_managers(),indent=2)); return
     if args.command=='plan':
-        rows=make_plan(all_managers(),fetch(refresh=args.refresh_catalog),tuple(args.preference.split(',')))
+        installed=all_managers(); rows=make_plan(installed,fetch(installed),tuple(args.preference.split(',')))
         open(args.output,'w').write(json.dumps(rows,indent=2)+'\n')
         with open(args.csv,'w',newline='') as stream:
             writer=csv.writer(stream); writer.writerow(['members','recommendation','manager','confidence','status','action'])
