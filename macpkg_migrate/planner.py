@@ -1,4 +1,5 @@
 from collections import defaultdict
+from .core import Identity, candidates_for, plan_record
 
 def make_plan(installed, relations, preference=("macports","fink","homebrew")):
     index={}
@@ -30,5 +31,14 @@ def make_plan(installed, relations, preference=("macports","fink","homebrew")):
         options.extend({"manager":x["manager"],"type":x["type"],"name":x["name"],"confidence":1.0,"status":"installed","method":"already-installed"} for x in family)
         options.sort(key=lambda x:(x["status"] not in ("automatic","installed"),-x["confidence"],preference.index(x["manager"]) if x["manager"] in preference else 99))
         chosen=options[0] if options else None
-        rows.append({"members":family,"options":options[:10],"recommendation":chosen,"action":"review" if not chosen or chosen["status"] not in ("automatic","installed") else "consolidate"})
+        source = Identity.from_record(family[0])
+        catalog_candidates = candidates_for(relations, source)
+        if catalog_candidates:
+            catalog_version = next((r.get("catalog_version") for r in relations if r.get("catalog_version")), None)
+            record = plan_record(source, catalog_candidates, catalog_version, preference)
+            record["members"] = family
+            record["options"] = options[:10]
+            rows.append(record)
+        else:
+            rows.append({"members":family,"options":options[:10],"recommendation":chosen,"action":"review" if not chosen or chosen["status"] not in ("automatic","installed") else "consolidate"})
     return rows
