@@ -1,4 +1,5 @@
 import argparse,csv,json,subprocess,sys
+from .binaries import ensure_binaries
 from .catalog import fetch
 from .inventory import all_managers
 from .planner import make_plan
@@ -28,11 +29,15 @@ def main():
     if args.command is None: print(GUIDE); return
     if args.command=='inventory': print(json.dumps(all_managers(),indent=2)); return
     if args.command=='plan':
+        progress=lambda message: print(message,file=sys.stderr)
         try:
             installed=all_managers()
-            rows=make_plan(installed,fetch(installed,progress=lambda message: print(message,file=sys.stderr)))
+            relations=ensure_binaries(fetch(installed,progress=progress),progress=progress)
+            rows=make_plan(installed,relations)
         except RuntimeError as exc:
             print(f"macpkg-migrate: error: {exc}",file=sys.stderr); raise SystemExit(1)
+        builds=[(row.get("recommendation") or {}).get("name","?") for row in rows if row.get("action")=="consolidate" and (row.get("recommendation") or {}).get("install_method")=="source"]
+        if builds: progress(f"Warning: {len(builds)} recommendation(s) would build from source: {', '.join(builds)}")
         open(args.output,'w').write(json.dumps(rows,indent=2)+'\n')
         with open(args.csv,'w',newline='') as stream:
             writer=csv.writer(stream); writer.writerow(['members','recommendation','manager','confidence','status','action'])

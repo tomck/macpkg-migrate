@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from macpkg_migrate import cli
 from macpkg_migrate import inventory
+from macpkg_migrate.binaries import ensure_binaries
 from macpkg_migrate.catalog import fetch
 
 
@@ -104,6 +105,77 @@ class InventoryRobustnessTests(unittest.TestCase):
         with patch("shutil.which", return_value="/usr/local/bin/brew"):
             rows = inventory.homebrew(run=run)
         self.assertEqual(rows[0]["name"], "weird")
+
+
+class EnsureBinariesTests(unittest.TestCase):
+    def test_fills_unknown_targets_and_caches(self):
+        import os
+        import tempfile
+
+        bottle = {"formulae": [{"bottle": {"stable": {"files": {"sonoma": {}}}}}]}
+        archive = '<a href="wget-1.25_0.darwin_23.x86_64.tbz2">x</a>'
+        bindist = "Package: ansible\nFilename: stable/main/binary-darwin-x86_64/ansible.deb\n"
+        fetches = []
+
+        def brew_run(command, **kwargs):
+            class Result:
+                returncode = 0
+                stdout = json.dumps(bottle)
+            return Result()
+
+        class Response:
+            def __init__(self, text):
+                self.text = text
+
+            def read(self):
+                return self.text.encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fetch(request):
+            fetches.append(request.full_url)
+            if "packages.macports.org" in request.full_url:
+                return Response(archive)
+            return Response(bindist)
+
+        relations = [
+            {"source": {}, "target": {"manager": "homebrew", "package_type": "formula", "native_name": "wget"}},
+            {"source": {}, "target": {"manager": "homebrew", "package_type": "cask", "native_name": "Docker"}},
+            {"source": {}, "target": {"manager": "macports", "package_type": "port", "native_name": "wget"}},
+            {"source": {}, "target": {"manager": "fink", "package_type": "package", "native_name": "ansible"}},
+            {"source": {}, "target": {"manager": "macports", "package_type": "port", "native_name": "wget",
+                                      "binaries": ["darwin_23.x86_64"]}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            cache = os.path.join(directory, "binaries.json")
+            ensure_binaries(relations, cache_path=cache, brew_run=brew_run, fetch=fetch)
+            targets = [relation["target"] for relation in relations]
+            self.assertEqual(targets[0]["binaries"], ["sonoma"])
+            self.assertEqual(targets[1]["binaries"], ["any"])
+            self.assertEqual(targets[2]["binaries"], ["darwin_23.x86_64"])
+            self.assertEqual(targets[3]["binaries"], ["10.14/binary-darwin-x86_64", "10.15/binary-darwin-x86_64"])
+            self.assertEqual(targets[4]["binaries"], ["darwin_23.x86_64"])
+            before = list(fetches)
+            ensure_binaries(relations, cache_path=cache, brew_run=brew_run, fetch=fetch)
+            self.assertEqual(fetches, before)
+
+    def test_probe_failures_stay_unknown(self):
+        import os
+        import tempfile
+
+        def fetch(request):
+            raise OSError("network down")
+
+        relations = [
+            {"source": {}, "target": {"manager": "macports", "package_type": "port", "native_name": "wget"}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            ensure_binaries(relations, cache_path=os.path.join(directory, "b.json"), fetch=fetch)
+        self.assertEqual(relations[0]["target"].get("binaries", []), [])
 
 
 class PlanCommandTests(unittest.TestCase):

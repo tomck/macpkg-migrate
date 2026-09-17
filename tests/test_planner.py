@@ -26,3 +26,12 @@ class TestPlanner(unittest.TestCase):
         ]
         row=make_plan(installed,relations,("fink","macports","homebrew"))[0]
         self.assertEqual(row["recommendation"]["manager"],"fink")
+
+    def test_options_and_recommendation_carry_install_method(self):
+        installed=[{"manager":"homebrew","type":"formula","name":"wget"}]
+        relations=[{"source":{"manager":"homebrew","package_type":"formula","native_name":"wget"},"target":{"manager":"macports","package_type":"port","native_name":"wget","binaries":["darwin_23.x86_64"]},"confidence":1.0,"review_status":"automatic","matching_method":"curated","catalog_version":"v1"}]
+        row=make_plan(installed,relations,host={"darwin_23.x86_64"})[0]
+        self.assertEqual(row["options"][0]["install_method"],"binary")
+        self.assertEqual(row["recommendation"]["install_method"],"binary")
+        row=make_plan(installed,relations,host={"darwin_24.arm64"})[0]
+        self.assertEqual(row["recommendation"]["install_method"],"source")

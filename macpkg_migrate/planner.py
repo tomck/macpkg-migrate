@@ -1,7 +1,8 @@
 from collections import defaultdict
-from macpkg_migrate_core import Identity, candidates_for, plan_record
+from macpkg_migrate_core import Identity, candidates_for, install_method, host_bins, plan_record
 
-def make_plan(installed, relations, preference=("macports","fink","homebrew")):
+def make_plan(installed, relations, preference=("macports","fink","homebrew"), host=None):
+    host = set(host_bins() if host is None else host)
     index={}
     for relation in relations:
         source=relation.get("source",{}); target=relation.get("target",{})
@@ -27,8 +28,9 @@ def make_plan(installed, relations, preference=("macports","fink","homebrew")):
         for item in family:
             key=(item["manager"],item["type"],item["name"])
             for target,relation in index.get(key,[]):
-                options.append({"manager":target[0],"type":target[1],"name":target[2],"confidence":relation.get("confidence",0),"status":relation.get("review_status","needs-review"),"method":relation.get("matching_method","catalog")})
-        options.extend({"manager":x["manager"],"type":x["type"],"name":x["name"],"confidence":1.0,"status":"installed","method":"already-installed"} for x in family)
+                tokens=relation.get("target",{}).get("binaries",[])
+                options.append({"manager":target[0],"type":target[1],"name":target[2],"confidence":relation.get("confidence",0),"status":relation.get("review_status","needs-review"),"method":relation.get("matching_method","catalog"),"install_method":install_method(tokens,host)})
+        options.extend({"manager":x["manager"],"type":x["type"],"name":x["name"],"confidence":1.0,"status":"installed","method":"already-installed","install_method":"unknown"} for x in family)
         options.sort(key=lambda x:(x["status"] not in ("automatic","installed"),-x["confidence"],preference.index(x["manager"]) if x["manager"] in preference else 99))
         chosen=options[0] if options else None
         source = Identity.from_record(family[0])
@@ -38,7 +40,13 @@ def make_plan(installed, relations, preference=("macports","fink","homebrew")):
             record = plan_record(source, catalog_candidates, catalog_version, preference)
             record["members"] = family
             record["options"] = options[:10]
+            if record.get("recommendation") is not None:
+                choice = record["recommendation"]
+                match = next((o for o in options if (o["manager"],o["type"],o["name"])==(choice.get("manager"),choice.get("type"),choice.get("name"))), None)
+                choice["install_method"] = match["install_method"] if match else "unknown"
             rows.append(record)
         else:
+            if chosen is not None:
+                chosen=dict(chosen)
             rows.append({"members":family,"options":options[:10],"recommendation":chosen,"action":"review" if not chosen or chosen["status"] not in ("automatic","installed") else "consolidate"})
     return rows
