@@ -1,5 +1,5 @@
 from collections import defaultdict
-from .core import Identity, candidates_for, plan_record
+from macpkg_migrate_core import Identity, candidates_for, plan_record
 
 def make_plan(installed, relations, preference=("macports","fink","homebrew")):
     index={}

@@ -3,25 +3,44 @@ import json
 import shutil
 import subprocess
 
-from .core import Identity, candidates_for
+from macpkg_migrate_core import Identity, candidates_for
+
+INSTALL_HINT = "brew tap tomck/escapefrombrewyork && brew install macpkgmap"
+
 
 def fetch(installed, client="macpkgmap", run=subprocess.run, progress=None):
-    executable=shutil.which(client) or client
-    relations=[]; seen=set()
+    executable = shutil.which(client) or client
+    relations = []
+    seen = set()
     for item in installed:
-        manager=item["manager"]; package_type=item["type"]; name=item["name"]
-        if progress: progress(f"Querying macpkgmap for {manager}:{name}...")
-        result=run([executable,"relations",manager,package_type,name],capture_output=True,text=True)
-        if result.returncode != 0: continue
-        try: payload=json.loads(result.stdout)
-        except json.JSONDecodeError: continue
-        for relation in payload.get("results",[]):
+        manager = item["manager"]
+        package_type = item["type"]
+        name = item["name"]
+        if progress:
+            progress(f"Querying {client} for {manager}:{name}...")
+        try:
+            result = run([executable, "relations", manager, package_type, name], capture_output=True, text=True)
+        except FileNotFoundError:
+            raise RuntimeError(f"catalog backend '{client}' not found; install it with: {INSTALL_HINT}")
+        if result.returncode != 0:
+            if progress:
+                progress(f"Warning: {client} query for {manager}:{name} failed; skipped.")
+            continue
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            if progress:
+                progress(f"Warning: {client} query for {manager}:{name} returned invalid JSON; skipped.")
+            continue
+        for relation in payload.get("results", []):
             # Reject malformed or source-mismatched responses fail-closed.
             expected = Identity(manager, package_type, name)
             if Identity.from_record(relation.get("source", {})) != expected:
                 continue
             relation = dict(relation)
             relation["catalog_version"] = payload.get("catalog_version")
-            marker=json.dumps(relation,sort_keys=True)
-            if marker not in seen: seen.add(marker); relations.append(relation)
+            marker = json.dumps(relation, sort_keys=True)
+            if marker not in seen:
+                seen.add(marker)
+                relations.append(relation)
     return relations

@@ -1,6 +1,7 @@
 import json
 
-from macpkg_migrate.core import (
+from macpkg_migrate_core import (
+    Candidate,
     Identity,
     candidates_for,
     choose_candidate,
@@ -36,7 +37,7 @@ def test_snapshot_and_metadata_are_preserved(tmp_path):
 
 
 def test_review_only_near_hit_cannot_be_selected_or_installed():
-    candidate = choose_candidate([__import__("macpkg_migrate.core", fromlist=["Candidate"]).Candidate.from_relation(relation("needs-review"))])
+    candidate = choose_candidate([Candidate.from_relation(relation("needs-review"))])
     assert candidate is None
     record = plan_record(Identity("homebrew", "formula", "python@3.14"), [], "v1")
     assert dry_run(record)["would_install"] is False
