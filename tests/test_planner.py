@@ -1,5 +1,6 @@
 import unittest
 import json
+from unittest.mock import patch
 from macpkg_migrate.catalog import fetch
 from macpkg_migrate.planner import make_plan
 
@@ -9,7 +10,10 @@ class TestPlanner(unittest.TestCase):
             returncode=0; stdout=json.dumps({"catalog_version":"fixture-v1","results":[{"source":{"manager":"homebrew","package_type":"formula","native_name":"ansible@12"},"target":{"manager":"fink","package_type":"package","native_name":"ansible"},"confidence":1.0,"review_status":"automatic"}]})
         calls=[]
         def run(command,**kwargs): calls.append(command); return Result()
-        result=fetch([{"manager":"homebrew","type":"formula","name":"ansible@12"}],run=run)
+        # fetch() resolves the client via shutil.which: pin it to the
+        # fallback so this test is independent of the host PATH.
+        with patch("shutil.which", return_value=None):
+            result=fetch([{"manager":"homebrew","type":"formula","name":"ansible@12"}],run=run)
         self.assertEqual(result[0]["target"]["native_name"],"ansible")
         self.assertEqual(result[0]["catalog_version"],"fixture-v1")
         self.assertIn("macpkgmap",calls[0])
