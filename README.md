@@ -1,13 +1,23 @@
 # macpkg-migrate
 
 Multi-manager macOS package consolidation planner. It inventories Homebrew,
-MacPorts, and Fink, consumes the neutral `macpkg-catalog`, groups related
-package identities, and recommends one manager/package per program.
+MacPorts, and Fink, consumes the neutral `macpkg-catalog` through the
+installed `macpkgmap` client, groups related package identities, and
+recommends one manager/package per program.
 
-It is deliberately plan-only in its first release: it writes a JSON plan and
-CSV review file, but never installs or removes packages automatically.
+Workflow: `inventory` → `plan` (JSON plan + CSV review file) → `migrate`
+(dry run by default) → `migrate --plan ... --install` applies the reviewed
+plan after confirmation → `verify` checks which recommendations are
+installed. Only MacPorts and Fink targets are installed; Homebrew targets
+are reported but never installed. Nothing is ever removed automatically.
+
+Requires the catalog client:
+
+```sh
+brew tap tomck/escapefrombrewyork && brew install macpkgmap
+```
 
 ```sh
 macpkg-migrate plan
-macpkg-migrate plan --preference fink,macports,homebrew --refresh-catalog
+macpkg-migrate plan --preference fink,macports,homebrew
 ```
