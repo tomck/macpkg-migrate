@@ -27,8 +27,8 @@ manager-specific adapters.
 
 ## Release strategy
 
-Version `0.4.0` is the current shared-core API release. Consumers should depend
-on `macpkg-migrate-core>=0.4,<0.5` while this API stabilizes. Future breaking API
+Version `0.5.0` is the current shared-core API release. Consumers should depend
+on `macpkg-migrate-core>=0.5,<0.6` while this API stabilizes. Future breaking API
 changes should increment the minor version before 1.0; a stable post-1.0 API
 should use normal major-version changes. The Homebrew tap should update the
 formula only after the standalone tests and a clean install pass.
