@@ -35,3 +35,26 @@ class TestPlanner(unittest.TestCase):
         self.assertEqual(row["recommendation"]["install_method"],"binary")
         row=make_plan(installed,relations,host={"darwin_24.arm64"})[0]
         self.assertEqual(row["recommendation"]["install_method"],"source")
+
+    def test_binary_option_ranks_before_source_after_safety(self):
+        installed=[{"manager":"homebrew","type":"formula","name":"wget"}]
+        relations=[
+            {"source":{"manager":"homebrew","package_type":"formula","native_name":"wget"},"target":{"manager":"macports","package_type":"port","native_name":"wget-src","binaries":["darwin_24.arm64"]},"confidence":1.0,"review_status":"automatic","matching_method":"catalog"},
+            {"source":{"manager":"homebrew","package_type":"formula","native_name":"wget"},"target":{"manager":"macports","package_type":"port","native_name":"wget-bin","binaries":["darwin_23.x86_64"]},"confidence":0.9,"review_status":"automatic","matching_method":"catalog"},
+        ]
+        row=make_plan(installed,relations,host={"darwin_23.x86_64"})[0]
+        self.assertEqual(row["options"][0]["name"],"wget-bin")
+        self.assertEqual(row["options"][0]["install_method"],"binary")
+        self.assertEqual(row["recommendation"]["install_method"],"binary")
+
+    def test_safety_still_outranks_binary(self):
+        installed=[{"manager":"homebrew","type":"formula","name":"wget"}]
+        relations=[
+            {"source":{"manager":"homebrew","package_type":"formula","native_name":"wget"},"target":{"manager":"macports","package_type":"port","native_name":"wget-bin","binaries":["darwin_23.x86_64"]},"confidence":1.0,"review_status":"needs-review","matching_method":"version-family"},
+            {"source":{"manager":"homebrew","package_type":"formula","native_name":"wget"},"target":{"manager":"macports","package_type":"port","native_name":"wget-src","binaries":["darwin_24.arm64"]},"confidence":0.9,"review_status":"automatic","matching_method":"catalog"},
+        ]
+        row=make_plan(installed,relations,host={"darwin_23.x86_64"})[0]
+        names=[o["name"] for o in row["options"]]
+        # Already-installed stays first; among catalog targets the automatic
+        # source outranks the needs-review binary despite the binary signal.
+        self.assertLess(names.index("wget-src"),names.index("wget-bin"))

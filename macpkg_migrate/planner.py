@@ -1,5 +1,7 @@
 from collections import defaultdict
-from macpkg_migrate_core import Identity, candidates_for, install_method, host_bins, plan_record
+from macpkg_migrate_core import Identity, binary_rank, candidates_for, install_method, host_bins, plan_record
+
+INSTALL_RANK = {"binary": 0, "unknown": 1, "source": 2}
 
 def make_plan(installed, relations, preference=("macports","fink","homebrew"), host=None):
     host = set(host_bins() if host is None else host)
@@ -31,13 +33,15 @@ def make_plan(installed, relations, preference=("macports","fink","homebrew"), h
                 tokens=relation.get("target",{}).get("binaries",[])
                 options.append({"manager":target[0],"type":target[1],"name":target[2],"confidence":relation.get("confidence",0),"status":relation.get("review_status","needs-review"),"method":relation.get("matching_method","catalog"),"install_method":install_method(tokens,host)})
         options.extend({"manager":x["manager"],"type":x["type"],"name":x["name"],"confidence":1.0,"status":"installed","method":"already-installed","install_method":"unknown"} for x in family)
-        options.sort(key=lambda x:(x["status"] not in ("automatic","installed"),-x["confidence"],preference.index(x["manager"]) if x["manager"] in preference else 99))
+        # Safety first, then binary availability (binary > unknown > source),
+        # then confidence. Binary rank never overrides safety or confidence values.
+        options.sort(key=lambda x:(x["status"] not in ("automatic","installed"),INSTALL_RANK.get(x.get("install_method","unknown"),1),-x["confidence"],preference.index(x["manager"]) if x["manager"] in preference else 99))
         chosen=options[0] if options else None
         source = Identity.from_record(family[0])
         catalog_candidates = candidates_for(relations, source)
         if catalog_candidates:
             catalog_version = next((r.get("catalog_version") for r in relations if r.get("catalog_version")), None)
-            record = plan_record(source, catalog_candidates, catalog_version, preference)
+            record = plan_record(source, catalog_candidates, catalog_version, preference, host)
             record["members"] = family
             record["options"] = options[:10]
             if record.get("recommendation") is not None:

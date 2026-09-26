@@ -157,8 +157,12 @@ class EnsureBinariesTests(unittest.TestCase):
             self.assertEqual(targets[0]["binaries"], ["sonoma"])
             self.assertEqual(targets[1]["binaries"], ["any"])
             self.assertEqual(targets[2]["binaries"], ["darwin_23.x86_64"])
-            self.assertEqual(targets[3]["binaries"], ["10.14/binary-darwin-x86_64", "10.15/binary-darwin-x86_64"])
+            self.assertEqual(targets[3]["binaries"], ["10.13/binary-darwin-x86_64", "10.14/binary-darwin-x86_64"])
             self.assertEqual(targets[4]["binaries"], ["darwin_23.x86_64"])
+            bindist_urls = [url for url in fetches if "bindist" in url]
+            self.assertTrue(bindist_urls)
+            self.assertTrue(all(url.endswith("Packages.gz") for url in bindist_urls))
+            self.assertFalse(any("/10.15/" in url for url in bindist_urls))
             before = list(fetches)
             ensure_binaries(relations, cache_path=cache, brew_run=brew_run, fetch=fetch)
             self.assertEqual(fetches, before)
@@ -176,6 +180,40 @@ class EnsureBinariesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             ensure_binaries(relations, cache_path=os.path.join(directory, "b.json"), fetch=fetch)
         self.assertEqual(relations[0]["target"].get("binaries", []), [])
+
+    def test_bindist_gzipped_payload_is_decoded(self):
+        import gzip
+        import os
+        import tempfile
+
+        payload = gzip.compress(
+            b"Package: ansible\nFilename: stable/main/binary-darwin-x86_64/ansible.deb\n")
+
+        class Response:
+            def read(self):
+                return payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        seen = []
+
+        def fetch(request):
+            seen.append(request.full_url)
+            return Response()
+
+        relations = [
+            {"source": {}, "target": {"manager": "fink", "package_type": "package", "native_name": "ansible"}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            ensure_binaries(relations, cache_path=os.path.join(directory, "g.json"), fetch=fetch)
+        self.assertEqual(
+            relations[0]["target"]["binaries"],
+            ["10.13/binary-darwin-x86_64", "10.14/binary-darwin-x86_64"])
+        self.assertTrue(seen and all(url.endswith("Packages.gz") for url in seen))
 
 
 class PlanCommandTests(unittest.TestCase):

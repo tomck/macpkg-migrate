@@ -4,6 +4,7 @@ Catalog data first: this fills targets whose relation carries no binaries
 (unknown). Probes only the unknown; failures stay unknown, never block.
 Cache lives at ~/.cache/macpkg-migrate/binaries.json with a 7-day TTL.
 """
+import gzip
 import json
 import os
 import re
@@ -13,7 +14,9 @@ import urllib.request
 
 CACHE_TTL = 7 * 24 * 3600
 BINDIST_BASE = "http://bindist.finkmirrors.net"
-BINDIST_TARGETS = (("10.14", "x86_64"), ("10.15", "x86_64"))
+# Live-proven by catalog slice 4a: trees publish only Packages.gz, and 10.15
+# has no Packages index at all. Keep in sync with macpkg_catalog/archives.py.
+BINDIST_TARGETS = (("10.13", "x86_64"), ("10.14", "x86_64"))
 ARCHIVE_FILENAME = re.compile(r"\.((darwin_\d+)\.(arm64|x86_64|ppc|i386))\.tbz2(?=[\"'<\s])")
 
 
@@ -71,14 +74,20 @@ def macports_platforms(name, fetch=None):
 def bindist_names(os_tree, arch, fetch=None):
     """Package names with bindist debs for one OS tree and architecture."""
     request = urllib.request.Request(
-        f"{BINDIST_BASE}/{os_tree}/dists/stable/main/binary-darwin-{arch}/Packages",
+        f"{BINDIST_BASE}/{os_tree}/dists/stable/main/binary-darwin-{arch}/Packages.gz",
         headers={"User-Agent": "macpkg-migrate"})
     opener = fetch or (lambda request: urllib.request.urlopen(request, timeout=120))
     try:
         with opener(request) as response:
-            text = response.read().decode("utf-8", "replace")
+            payload = response.read()
     except OSError:
         return set()
+    if payload[:2] == b"\x1f\x8b":
+        try:
+            payload = gzip.decompress(payload)
+        except (OSError, EOFError):
+            return set()
+    text = payload.decode("utf-8", "replace")
     names = set()
     for line in text.splitlines():
         if line.startswith("Package:"):
