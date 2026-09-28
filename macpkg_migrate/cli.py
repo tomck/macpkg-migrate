@@ -38,6 +38,8 @@ def main():
             print(f"macpkg-migrate: error: {exc}",file=sys.stderr); raise SystemExit(1)
         builds=[(row.get("recommendation") or {}).get("name","?") for row in rows if row.get("action")=="consolidate" and (row.get("recommendation") or {}).get("install_method")=="source"]
         if builds: progress(f"Warning: {len(builds)} recommendation(s) would build from source: {', '.join(builds)}")
+        reviews=[row for row in rows if row.get("action")!="consolidate"]
+        if reviews: progress(f"Note: {len(reviews)} group(s) need review with no automatic target. For language runtimes, an upstream version manager (e.g. nvm, pyenv) shipping prebuilt binaries may be simpler than building from source.")
         open(args.output,'w').write(json.dumps(rows,indent=2)+'\n')
         with open(args.csv,'w',newline='') as stream:
             writer=csv.writer(stream); writer.writerow(['members','recommendation','manager','confidence','status','action'])

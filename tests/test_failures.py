@@ -225,6 +225,33 @@ class PlanCommandTests(unittest.TestCase):
                 cli.main()
         self.assertEqual(ctx.exception.code, 1)
 
+    def test_plan_notes_review_groups_and_version_managers(self):
+        import io
+        from contextlib import redirect_stderr
+
+        installed = [{"manager": "homebrew", "type": "formula", "name": "node"}]
+        relations = [
+            {"source": {"manager": "homebrew", "package_type": "formula", "native_name": "node"},
+             "target": {"manager": "macports", "package_type": "port", "native_name": "nodejs26",
+                        "binaries": ["darwin_24.arm64"]},
+             "confidence": 0.78, "review_status": "needs-review",
+             "matching_method": "version-family"},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            output = f"{directory}/plan.json"
+            argv = ["macpkg-migrate", "plan", "--output", output,
+                    "--csv", f"{directory}/preview.csv"]
+            with patch("macpkg_migrate.cli.all_managers", return_value=installed), patch(
+                "macpkg_migrate.cli.fetch", return_value=relations
+            ), patch("macpkg_migrate.cli.ensure_binaries", side_effect=lambda r, **k: r), patch.object(
+                sys, "argv", argv
+            ):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    cli.main()
+        self.assertIn("need review", stderr.getvalue())
+        self.assertIn("nvm", stderr.getvalue())
+
 
 class VerifyCommandTests(unittest.TestCase):
     def run_verify(self, plan, current):
